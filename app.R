@@ -16,6 +16,7 @@ library(klaR)
 library(cluster)
 library(car)
 library(nnet)
+library(rmngb)
 
 
 load(file = "spfile.Rda")
@@ -76,10 +77,16 @@ ui <- fluidPage(
       
       # Show a plot of the generated distribution
       mainPanel(
-         plotOutput("distPlot"),
-         uiOutput("plots"),
-         actionButton("Plot", "Draw Tables"),
-         dataTableOutput("table")
+        h4("Size of Each Cluster in Percantage"),
+        plotOutput("distPlot"),
+        h4("P-Value on Plots shows the probabilty that ALL the clusters are the same with respect to variable"),
+        uiOutput("plots"),
+        actionButton("Plot", "Draw Tables"),
+        h4("Table shows the percentage breakdown of each Cluster by given Variable. Same info as graphs above"),
+        dataTableOutput("table"),
+        h4("Pairwise Chi-Square Test, Only shows cluster Pairs with p-value over 0.05"),
+        h5("Interpretation: P-Value is the Probability that Cluster A and Cluster B are the same with respect to varibale in row."),
+        dataTableOutput("tablePValues")
       )
       
    )
@@ -239,7 +246,50 @@ server <- function(input, output) {
     })
     
   })
+
+  output$tablePValues <- renderDataTable(makeTablePvalue())
+  makeTablePvalue <- reactive({
+    # If the button is not clicked, do not draw
+    if (v$doPlot == FALSE) {return()}
+    
+    # Isolate the table code, maintain the old table until the button is clicked again
+    isolate({
+      varNames <- input$displayVariables
+      returnedTable <- NULL
+      for (i in 1:length(varNames)){
+        spAnal$clusterDim <- changeCluster()$cluster
+        varName <- varNames[i] 
+        x <- spAnal$clusterDim
+        y <-  spAnal[[varName]]
+        table <- table(spAnal$clusterDim , spAnal[[varName]] )
+        i <- (colSums(table) != 0)
+        p_values <- pairwise.chisq.test(table[,i])
+        
+        x <- which(p_values$p.value >.05 ,arr.ind = TRUE)
+        
+        finalTable <- cbind(x , p_values$p.value[which(p_values$p.value >.05)])
+        
+        
+        colnames(finalTable) <- c("Cluster A","Cluster B","P-Value")
+        
+        if (nrow(finalTable) > 0) {
+            for (j in 1:nrow(finalTable)){
+              rownames(finalTable)[j] <- varName
+            }
+        }
+        finalTable <- cbind(names = rownames(finalTable), finalTable)
+        
+        returnedTable <- rbind(returnedTable, finalTable)
+      }
+      return(returnedTable)
+      
+      
+      
+    })
+    
+  })
   
+    
   
   plotInput <- reactive({
     varNames <- input$displayVariables
